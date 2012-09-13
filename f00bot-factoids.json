@@ -1,9 +1,0 @@
-{
-	"wait": 30000,
-	"factoids": {
-		"grunt (http://google.com?s": {
-			"value": "grunt)",
-			"popularity": 0
-		}
-	}
-}

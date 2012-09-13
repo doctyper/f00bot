@@ -3,128 +3,134 @@ var path = require('path');
 var util = require("util");
 var http = require("http");
 
-var Sandbox = require("./lib/sandbox");
-var FactoidServer = require("./lib/factoidserv");
-var FeelingLucky = require("./lib/feelinglucky");
-var HTTP = require("http");
+var JSONdb = require("./lib/db");
 var Bot = require("./lib/irc");
-var Shared = require("./shared");
 
-
-var JSBot = function(profile) {
-	this.sandbox = new Sandbox(path.join(__dirname, "f00bot-utils.js"));
-	this.factoids = new FactoidServer(path.join(__dirname, "f00bot-factoids.json"));
-
+var f00bert = function(profile) {
+	this.db = new JSONdb();
+	this.db.init(path.join(__dirname, "f00bot-db.json"));
 	Bot.call(this, profile);
 	this.set_log_level(this.LOG_ALL);
 	this.set_trigger("!");
 };
 
 
-util.inherits(JSBot, Bot);
+util.inherits(f00bert, Bot);
 
-
-JSBot.prototype.init = function() {
+f00bert.prototype.init = function() {
 
 	Bot.prototype.init.call(this);
 
-	this.register_listener(/^((?:sm?|v8?|js?|>>?)>)([^>].*)+/, Shared.execute_js);
+	var urls = /\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/gi;
+	this.register_listener( urls, this.grab_url );
 
-
-	this.register_command("g", Shared.google, {
-		help: "Run this command with a search query to return the first Google result. Usage: !g kitten images"});
-
-	this.register_command("google", this.google, {
-		help: "Returns a link to a Google search page of the search term. Usage: !google opencourseware computational complexity"});
-
-	this.register_command("mdn", this.mdn, {
-		help: "Search the Mozilla Developer Network. Usage: !mdn bitwise operators"});
-	this.register_command("mdc", "mdn");
-
-	this.register_command("find", Shared.find);
-
-	this.register_command("list", Shared.list);
-
-	this.register_command("help", this.help);
-
-	this.register_command("tldr", Shared.learn, {
-		allow_intentions: false,
-		help: "Add factoid to bot. Usage: !tldr ( [alias] foo = bar | foo =~ s/expression/replace/gi )"});
-
-	this.register_command("img", Shared.learn, {
-		allow_intentions: false,
-		help: "Saves a link to a gif for later reuse:  !img deadhorse"
-	});
-
-	this.register_command("gtfo", Shared.forget, {
-		allow_intentions: false,
-		help: "Remove factoid from bot. Usage: !gtfo foo"});
-
-	this.register_command("commands", Shared.commands);
-
-	this.on('command_not_found', this.command_not_found);
+	this.register_command('tldr', this.tldr);
 
 };
 
+f00bert.prototype.gifmanager = function(context, text){
 
+};
 
-JSBot.prototype.google = function(context, text) {
-
-	if (!text) {
-		context.channel.send_reply (context.sender, this.get_command_help("google"));
-		return;
+f00bert.prototype.grab_url = function(context, text){
+	//#####################
+	// save this link to the json db
+	//#####################
+	if (!this.db.collection.urls) {
+		this.db.collection.urls = [];
 	}
 
-	context.channel.send_reply (context.intent, "Google search: \""+text+"\" <http://www.google.com/search?q="+encodeURIComponent(text)+">");
+	if (this.db.collection.dupes.indexOf(text) !== -1) {
+		return;
+	} else {
+		var death = Math.floor(new Date().getTime()/1000);
+		this.db.collection.urls.push({user: context.sender.name, url: text, death: (death + 2000)});
+		this.db.collection.dupes.push(text);
+		this.db.activity();
+	}
+		
 };
 
+f00bert.prototype.tldr = function(context, text){
+	var links = [], limit = 10, last;
+	var stamp = Math.floor(new Date().getTime()/1000);
 
-
-JSBot.prototype.help = function(context, text) {
-
-	try {
-		if (!text) {
-			return this.command_not_found (context, "help");
+	for (var i = 0; i < this.db.collection.urls.length; i++) {
+		if (stamp > this.db.collection.urls[i].death) {
+			this.db.collection.urls.remove(i);
+			this.db.collection.dupes.remove(i);
+		} else {
+			console.log('item still fresh', stamp, this.db.collection.urls[i]);
 		}
 
-		context.channel.send_reply(context.intent, this.get_command_help(text));
-	} catch(e) {
-		context.channel.send_reply(context.sender, e);
+		if (this.db.collection.urls[i].url && this.db.collection.urls[i].url !== last) {
+			links.push(this.db.collection.urls[i].user + ' linked to: ' + this.db.collection.urls[i].url + ' \n');
+			last = this.db.collection.urls[i].url;
+		} else {
+			break;
+		}
 	}
+
+	var reply = '';
+	for (i = 0; i < links.length; i++) {
+		reply += links[i];
+	}
+	context.channel.echo(reply);
 };
 
 
-JSBot.prototype.mdn = function(context, text, command) {
-	if (!text) {
-		return Shared.find.call (this, context, command);
-	}
-
-	Shared.google (context, "site:developer.mozilla.org "+text);
-};
-
-
-JSBot.prototype.command_not_found = function(context, text) {
-
-	if (context.priv) {
-		return Shared.find.call (this, context, text);
-	}
-
-	try {
-		context.channel.send_reply(context.intent, this.factoids.find(text, true));
-	} catch(e) {
-		// Factoid not found, do nothing.
-	}
-};
 
 
 var profile = [{
-	host: "chat.ff0000.com",
+	host: "downtown.tx.us.synirc.net",
 	port: 6667,
 	nick: "f00bot",
 	user: "f00bot",
 	real: "f00bot",
-	channels: ["#ff0001"]
+	channels: ["#f00"]
 }];
 
 
-(new JSBot(profile)).init();
+(new f00bert(profile)).init();
+
+
+if (!Array.prototype.indexOf) {
+
+	Array.prototype.indexOf = function(searchElement /*, fromIndex */) {
+
+    if (this === void 0 || this === null)
+      throw new TypeError();
+
+    var t = Object(this);
+    var len = t.length >>> 0;
+    if (len === 0)
+      return -1;
+
+    var n = 0;
+    if (arguments.length > 0) {
+      n = Number(arguments[1]);
+      if (n !== n)
+        n = 0;
+      else if (n !== 0 && n !== (1 / 0) && n !== -(1 / 0))
+        n = (n > 0 || -1) * Math.floor(Math.abs(n));
+    }
+
+    if (n >= len)
+      return -1;
+
+	var k = n >= 0 ? n : Math.max(len - Math.abs(n), 0);
+
+	for (; k < len; k++) {
+		if (k in t && t[k] === searchElement)
+			return k;
+		}
+		return -1;
+	};
+
+}
+
+Array.prototype.remove = function(from, to) {
+  var rest = this.slice((to || from) + 1 || this.length);
+  this.length = from < 0 ? this.length + from : from;
+  return this.push.apply(this, rest);
+};
