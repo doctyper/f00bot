@@ -44,11 +44,11 @@ f00bert.prototype.grab_url = function(context, text){
 		return;
 	} else {
 		var death = Math.floor(new Date().getTime()/1000);
-		this.db.collection.urls.push({user: context.sender.name, url: text, death: (death + 2000)});
+		this.db.collection.urls.push({user: context.sender.name, url: text, death: (death + (3600 * 2))});
 		this.db.collection.dupes.push(text);
 		this.db.activity();
 	}
-		
+
 };
 
 f00bert.prototype.tldr = function(context, text){
@@ -62,32 +62,38 @@ f00bert.prototype.tldr = function(context, text){
 		} else {
 			console.log('item still fresh', stamp, this.db.collection.urls[i]);
 		}
-
-		if (this.db.collection.urls[i].url && this.db.collection.urls[i].url !== last) {
-			links.push(this.db.collection.urls[i].user + ' linked to: ' + this.db.collection.urls[i].url + ' \n');
-			last = this.db.collection.urls[i].url;
-		} else {
-			break;
+		try	{
+			if (this.db.collection.urls[i].url && this.db.collection.urls[i].url !== last) {
+				links.push(this.db.collection.urls[i].user + ' linked to: ' + this.db.collection.urls[i].url + ' \n');
+				last = this.db.collection.urls[i].url;
+			} else {
+				break;
+			}
+		} catch (err){
+			console.log('EOL');
 		}
+
 	}
 
 	var reply = '';
 	for (i = 0; i < links.length; i++) {
 		reply += links[i];
 	}
-	context.channel.echo(reply);
+
+	context.client.get_user(context.sender.name).send("PRIVMSG "  + reply);
+	//context.channel.echo(reply);
 };
 
 
 
 
 var profile = [{
-	host: "downtown.tx.us.synirc.net",
+	host: "chat.ff0000.com",
 	port: 6667,
-	nick: "f00bot",
+	nick: "f00bert",
 	user: "f00bot",
 	real: "f00bot",
-	channels: ["#f00"]
+	channels: ["#testchan"]
 }];
 
 
